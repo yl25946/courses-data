@@ -6,3 +6,4 @@ edition = "2024"
 [dependencies]
 bincode = "2.0.1"
 tantivy = "0.25.0"
+bincode = "2.0.1"
