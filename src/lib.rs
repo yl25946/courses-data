@@ -6,7 +6,7 @@ use tantivy::query::QueryParser;
 use tantivy::schema::*;
 use tantivy::{IndexWriter, ReloadPolicy};
 
-pub type IdType = usize;
+pub type IdType = String;
 
 /// Build an index iteratively.
 pub struct IndexBuilder {
@@ -46,7 +46,7 @@ impl IndexBuilder {
 
     pub fn add_course(&mut self, id: IdType, number: &str, name: &str, descr: &str) {
         let mut doc = TantivyDocument::default();
-        doc.add_u64(self.id_field, id as u64);
+        doc.add_text(self.id_field, id);
         doc.add_text(self.number_field, number);
         doc.add_text(self.name_field, name);
         doc.add_text(self.descr_field, descr);
@@ -96,14 +96,19 @@ impl Index {
         // The query parser can interpret human queries.
         // Here, if the user does not specify which
         // field they want to search, we specify all by default.
-        let query_parser = QueryParser::for_index(
+        let mut query_parser = QueryParser::for_index(
             &self.index,
             vec![self.number_field, self.name_field, self.descr_field],
         );
 
+        // weight course name and number higher
+        // without this, the query "15-122" may not have 15122 as the first output :p
+        query_parser.set_field_boost(self.name_field, 2.0);
+        query_parser.set_field_boost(self.number_field, 3.0);
+
         // `QueryParser` may fail if the query is not in the right
         // format. For user facing applications, this can be a problem.
-        // A ticket has been opened regarding this problem.
+        // TODO: may want to make this function return a Result, dependant on this line.
         let query = query_parser.parse_query(query).unwrap();
 
         // We can now perform our query.
@@ -120,8 +125,8 @@ impl Index {
             .map(|(_score, doc_address)| {
                 let retrieved_doc: TantivyDocument = searcher.doc(doc_address).unwrap();
                 match OwnedValue::from(retrieved_doc.get_first(self.id_field).unwrap()) {
-                    OwnedValue::U64(id) => id as IdType,
-                    _ => unreachable!("We hardcoded id as a u64 above."),
+                    OwnedValue::Str(id) => id,
+                    _ => unreachable!("We hardcoded id as a string above."),
                 }
             })
             .collect()
